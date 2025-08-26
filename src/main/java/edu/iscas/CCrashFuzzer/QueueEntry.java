@@ -15,6 +15,8 @@ public class QueueEntry {
 	public List<IOPoint> ioSeq;
 	public int candidate_io;
 	public int max_match_fault;
+
+	//ljy--对每个队列对象，添加自己的同源故障序列Id，这里打算使用每个故障序列的最后的故障点的hashCode
 	
 	public boolean was_tested; //Had been tested at least for one time
 	
@@ -51,7 +53,9 @@ public class QueueEntry {
     
 	public QueueEntry next;           /* Next element, if any             */
 	public QueueEntry next_100;       /* 100 elements ahead               */
-    
+
+	public int original_id;            //ljy--同源源头序列唯一标识
+
     public void calibrate() {
     	this.max_match_fault = 0;
     	this.candidate_io = 0;

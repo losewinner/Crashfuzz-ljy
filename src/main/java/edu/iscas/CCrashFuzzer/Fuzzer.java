@@ -40,12 +40,6 @@ public class Fuzzer {
     public static List<QueueEntry> candidate_queue;
     public static List<QueueEntry> fuzzed_queue;
 
-	//ljy -- 插入一个临时QueueEntry对象用于保存触发了bug的faultSequence
-	public static QueueEntry queue_tmpljy;
-	public static QueueEntry queue_tmpSeedQljy;
-	public static QueuePair queuePair_tmpljy;
-	public static int faultNumberljy = -1;   //记录选择的故障序列包含的故障点的数量
-    public static boolean isgrabbedljy = false; //是否捕捉到了触发了bug的故障点
                            /* Path depth                       */
 	long handicap;
 	long depth;
