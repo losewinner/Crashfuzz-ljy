@@ -54,11 +54,13 @@ public class QueueEntry {
 	public QueueEntry next;           /* Next element, if any             */
 	public QueueEntry next_100;       /* 100 elements ahead               */
 
-	public int original_id;            //ljy--同源源头序列唯一标识
+	public int original_id;            //ljy--同源源头序列唯一标识 （在Mutation中使用）
+	public int mutate_depth;           //ljy--计算在当前同源集合中，序列的变异深度（可能没什么用）
 
     public void calibrate() {
     	this.max_match_fault = 0;
     	this.candidate_io = 0;
+		this.mutate_depth = 0;  //ljy--添加变异深度，每变异一次，都加一，1为变异一次，2为变异两次，不超过2，超过2则清零。
 		if(this.faultSeq == null || this.faultSeq.isEmpty()) {
 			this.faultSeq = new FaultSequence();
 			this.faultSeq.curFault.set(-1);;

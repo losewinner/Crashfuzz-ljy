@@ -72,21 +72,23 @@ public class Mutation {
     	}
 		return desCluster;
 	}
+
+	//ljy--在变异序列的过程，添加对同源序列的添加。
 	public static void mutateFaultSequence(QueueEntry q, Conf conf) {
 		List<QueueEntry> mutates = new ArrayList<QueueEntry>();   //创建了一个新的变异队列，用来存放q的本次变异的所有故障序列
 		FaultSequence original_faults = q.faultSeq;
-		
 		int io_index = q.candidate_io; 			//candidateio，这个才是最后一个FaultPoint的后一个IOPoint的索引
 		int fault_index = q.max_match_fault;    //这里的max-match-fault是当前原故障序列q中，最大一共匹配到多少FaultPoint的数量
+
 		
 		if(io_index == q.ioSeq.size() || fault_index < original_faults.seq.size() || original_faults.seq.size() >= conf.MAX_FAULTS) {
 			//no I/O points to inject a new fault
 			//or current I/O points do not match with the fault sequence
 			q.mutates = mutates;
 			q.favored_mutates = q.mutates;
+			//ljy--这里不用收集同源变异序列，因为这里的mutates是空的列表，不需要
 			return;
 		}
-
 
 		List<MaxDownNodes> currentCluster = Mutation.cloneCluster(conf.maxDownGroup);   //复制上一次集群的所有状态
 		for(FaultPoint fault:original_faults.seq) {
@@ -164,6 +166,7 @@ public class Mutation {
 						}
 						
 						mutates.add(new_q);
+
 					}
 					if(canReboot) {
 						for(String rebootNode:subCluster.deadGroup) {   //ljy---对任意一个宕机组中的节点都可进行reboot操作
@@ -214,6 +217,8 @@ public class Mutation {
 
 		q.mutates = mutates;
 		q.favored_mutates = q.mutates;
+		//ljy--在这里进行收集
+		HomoSeqSetManager.collectHomoSeqSet(q);
 	}
 	
 	public static List<QueueEntry> mutateFaultSequence_backup(QueueEntry q) {
@@ -280,7 +285,7 @@ public class Mutation {
 		return mutates;
 	}
 	//from 0 to limit-1
-		public static int getRandomNumber(int limit) {
+	public static int getRandomNumber(int limit) {
 			int num = (int) (Math.random()*limit);
 			return num;
 		}

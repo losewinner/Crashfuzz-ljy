@@ -563,6 +563,9 @@ public class Fuzzer {
 			if(exec_rst != -1) {
 				update_queue(q);
 			}
+
+			HomoSeqSetManager.updateHomoSeqSetEntry(q.mutate);
+
 			if(Conf.MANUAL) {
 				Scanner scan = new Scanner(System.in);
 				scan.nextLine();
