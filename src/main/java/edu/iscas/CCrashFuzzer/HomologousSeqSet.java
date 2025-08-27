@@ -19,7 +19,8 @@ public class HomologousSeqSet {
     public int total_has_new_cov_num;     //ljy--同源集合中，覆盖新的代码路径的故障序列的总数
     public int total_new_cov_contribution;//ljy--拥有新覆盖率的故障序列们的新增覆盖率总数
     public double average_new_cov_contribution; //ljy--平均新增覆盖率
-    public double trigger_bug_rate;         //ljy--集合中，触发bug的故障序列占已被测试过的故障序列总数的比率。
+    public double trigger_bug_ratio;         //ljy--集合中，触发bug的故障序列占已被测试过的故障序列总数的比率。
+    public double has_new_cov_ratio;         //ljy--集合中，拥有新覆盖率的故障序列占已被测试过的故障序列总数的比率。
     //ljy--同源序列集合初始化
     public HomologousSeqSet(){
         homoSeqSet = new ArrayList<>();
@@ -27,7 +28,16 @@ public class HomologousSeqSet {
         total_trigger_bug_num = 0;
         total_has_new_cov_num = 0;
         total_new_cov_contribution = 0;
-        trigger_bug_rate = 0;
+        trigger_bug_ratio = 0;
+        has_new_cov_ratio = 0;
+    }
+
+    public int getTotal_already_tested_num(){
+        return total_already_tested_num;
+    }
+
+    public int getTotal_trigger_bug_num(){
+        return total_trigger_bug_num;
     }
 
     //ljy--更新同源序列中的对应的QueueEntry
@@ -38,9 +48,11 @@ public class HomologousSeqSet {
             if(tmp_e.faultSeq.getFaultSeqID() == entry.faultSeq.getFaultSeqID()){
                 int tmp_mutate_depth = tmp_e.mutate_depth;
                 int tmp_original_id = tmp_e.original_id;
+                boolean tmp_has_bug = tmp_e.faultSeq.has_triggered_bug;
                 tmp_e = entry;
                 tmp_e.original_id = tmp_original_id;
                 tmp_e.mutate_depth = tmp_mutate_depth;
+                tmp_e.faultSeq.has_triggered_bug = tmp_has_bug;
                 homoSeqSet.set(i,tmp_e);
             }
         }
@@ -57,7 +69,23 @@ public class HomologousSeqSet {
                 tmp_total_already_tested_num++;
             }
         }
-        total_already_tested_num =Math.max(total_already_tested_num, tmp_total_already_tested_num);
+        total_already_tested_num = Math.max(total_already_tested_num, tmp_total_already_tested_num);
+        return true;
+    }
+
+    //ljy--统计共有多少触发bug的故障序列
+    public boolean calculHavTriggeredBugNum(){
+        if(homoSeqSet == null || homoSeqSet.isEmpty()){
+            return false;
+        }
+
+        int tmp_total_trigger_num = 0;
+        for(QueueEntry e: homoSeqSet){
+            if(e.faultSeq.has_triggered_bug){
+                tmp_total_trigger_num++;
+            }
+        }
+        total_trigger_bug_num = Math.max(total_trigger_bug_num, tmp_total_trigger_num);
         return true;
     }
 
@@ -90,10 +118,20 @@ public class HomologousSeqSet {
     }
 
     //ljy--计算触发bug比例：
-    public double calculTriggerBugRate(){
+    public double calculTriggerBugRatio(){
         if(total_already_tested_num !=0){
-            trigger_bug_rate = (double) total_trigger_bug_num /total_already_tested_num;
-            return trigger_bug_rate;
+            trigger_bug_ratio = (double) total_trigger_bug_num /total_already_tested_num;
+            return trigger_bug_ratio;
+        }
+        return -1;
+
+    }
+
+    //ljy--计算产生新覆盖率比例：
+    public double calculHasNewCovRatio(){
+        if(total_already_tested_num !=0){
+            has_new_cov_ratio = (double) total_has_new_cov_num /total_already_tested_num;
+            return has_new_cov_ratio;
         }
         return -1;
 

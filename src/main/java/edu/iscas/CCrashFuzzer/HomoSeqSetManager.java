@@ -9,6 +9,8 @@ import java.util.Map;
 public class HomoSeqSetManager {
     public static List<HomologousSeqSet> homoSetQueue = new ArrayList<HomologousSeqSet>();
     public static Map<Integer, HomologousSeqSet> homoSetMap = new HashMap<Integer, HomologousSeqSet>();
+    public static int homo_total_bugs;
+    public static int homo_total_tested_cases;
 
     //ljy--这个函数属于是在测试前调用，得到的队列，都是没有被测试过的，所以下面还需要写个更新函数。
     //ljy--判断故障序列是属于哪个同源集合的，并将其加入到对应的同源集合中
@@ -26,13 +28,16 @@ public class HomoSeqSetManager {
             HomologousSeqSet homoSet = new HomologousSeqSet();
             //ljy--设置源头id,使用faultSeq的唯一ID做标识
             homoSet.original_id = entry.faultSeq.getFaultSeqID();
+            //ljy--添加源头序列也进homoSet，不然bugs的数量不对。
             entry.original_id = homoSet.original_id;
+            homoSet.homoSeqSet.add(entry);
             for(QueueEntry mutate:entry.mutates){
                 mutate.mutate_depth = entry.mutate_depth+1; //ljy--加深变异深度
                 //ljy--将所有变异序列都加入同源序列集合（这是第一次变异，所以放心加入新的同源序列集合
                 mutate.original_id = homoSet.original_id;
                 homoSet.homoSeqSet.add(mutate);
             }
+
             homoSetQueue.add(homoSet);
             homoSetMap.computeIfAbsent(homoSet.original_id, k->homoSet);
 
@@ -80,5 +85,70 @@ public class HomoSeqSetManager {
         homoSetQueue.set(index,homoSet);
         //ljy--还要更新对应的Map中的
         homoSetMap.computeIfPresent(tmp_original_id,(k,v)->homoSet);
+    }
+
+    //ljy--统计测试过的总数以及bug数量是否与前面原版的相符合
+    public static String compareTestedSeqsNum(int total_bugs, int tested_cases){
+
+        homo_total_bugs = homoSetQueue.stream()
+                .mapToInt(HomologousSeqSet::getTotal_trigger_bug_num) // 提取属性值并转为 IntStream
+                .sum();
+
+        homo_total_tested_cases = homoSetQueue.stream()
+                .mapToInt(HomologousSeqSet::getTotal_already_tested_num)
+                .sum();
+        String rst = "";
+        rst += "Homo Total bugs: "+homo_total_bugs+"\n";
+        rst += "Homo Total tested cases: "+homo_total_tested_cases+"\n";
+        if(total_bugs == homo_total_bugs && homo_total_tested_cases == tested_cases){
+            rst += "Homo Test is true\n";
+        }
+        rst += "Homo Test has someplace mistake\n";
+        return rst;
+    }
+    //ljy--全局统计函数，统计之前想要看到的各种指标,仿写FuzzInfo的generateClientReport
+    public static String generateHomoSetsReport(int total_bugs, int tested_cases){
+        String rst = "";
+        rst += "*********************************************************************************\n";
+        rst += "*******************************HomoSet  Result***********************************\n";
+        rst += "*********************************************************************************\n";
+        rst += "Collect "+homoSetQueue.size()+" HomoSets\n";
+
+        int num = 0;
+
+        rst += "---------------------------------------------------------------------------------\n";
+        //ljy--按照含有多少测试过的序列大小进行降序排序
+        homoSetQueue.sort((o1,o2)->{
+            int test_num1 = o1.total_already_tested_num;
+            int test_num2 = o2.total_already_tested_num;
+            return Integer.compare(test_num2 , test_num1);
+        });
+
+        for(HomologousSeqSet homoSet:homoSetQueue){
+            num++;
+            rst += "The "+num+"th homoSet:\n";
+            rst += "Num of QueueEntries: "+homoSet.homoSeqSet.size()+"\n";
+            if(homoSet.calculAlreadyTestedNum()){
+                rst += "Num of Tested FaultSeq: "+homoSet.total_already_tested_num+"\n";
+                rst += "---------------------------\n";
+            }
+            if(homoSet.calculTotalNewCovCon()){
+                rst += "Num of Has New Coverage 's FaultSeq: "+homoSet.total_has_new_cov_num+"\n";
+                rst += "Average New Coverage of this homoSet: "+homoSet.calculAverageNewCov()+"\n";
+                rst += "Ratio of New Coverage's / Tested FaultSeq: "+homoSet.calculHasNewCovRatio()+"\n";
+                rst += "---------------------------\n";
+            }
+            if(homoSet.calculHavTriggeredBugNum()){
+                rst +="Num of Has Triggered bugs 's FaultSeq: "+homoSet.total_trigger_bug_num+"\n";
+                rst +="Ratio of Triggered bugs 's / Tested FaultSeq: "+homoSet.calculTriggerBugRatio()+"\n";
+                rst += "---------------------------\n";
+            }
+
+
+            rst += "------------------------------------------------------\n";
+        }
+        rst += compareTestedSeqsNum(total_bugs,tested_cases);
+        rst += "***********************************END*******************************************\n";
+        return rst;
     }
 }

@@ -351,6 +351,8 @@ public class Fuzzer {
 				faultsToBugs.computeIfPresent(q.faultSeq.seq.size(), (key, value) -> value + 1); //如果已经包含了，则数量+1
 				FileUtil.copyDirToBugs(testID, usedSeconds); //复制目录到bugs文件夹
 
+				//ljy--这里触发了bug，需要更新一下字段，需要知道homoSet中，具体有多少故障序列触发了bug
+				q.faultSeq.has_triggered_bug = true;
 
 			} else if (faultMode == 2) {
 				FuzzInfo.total_hangs++;
@@ -526,6 +528,7 @@ public class Fuzzer {
 						Thread.currentThread().sleep(1000);
 					}
 					System.out.println(FuzzInfo.generateClientReport());
+					System.out.println(HomoSeqSetManager.generateHomoSetsReport(FuzzInfo.total_bugs, FuzzInfo.testedUniqueCases.size())); //ljy--在这添加HomoSet的总体报告。
 					System.exit(0);
 				} catch (IOException | InterruptedException e) {
 					// TODO Auto-generated catch block
@@ -576,6 +579,7 @@ public class Fuzzer {
 		}
 
 		System.out.println(FuzzInfo.generateClientReport());
+		System.out.println(HomoSeqSetManager.generateHomoSetsReport(FuzzInfo.total_bugs, FuzzInfo.testedUniqueCases.size())); //ljy--在这添加HomoSet的总体报告。
 	}
 	public void recordGlobalInfo() {
 		//record total execution time, total used time, total execution number, total map size, total map entry

@@ -57,6 +57,7 @@ public class QueueEntry {
 	public int original_id;            //ljy--同源源头序列唯一标识 （在Mutation中使用）
 	public int mutate_depth;           //ljy--计算在当前同源集合中，序列的变异深度（可能没什么用）
 
+
     public void calibrate() {
     	this.max_match_fault = 0;
     	this.candidate_io = 0;
