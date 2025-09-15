@@ -217,8 +217,6 @@ public class Mutation {
 
 		q.mutates = mutates;
 		q.favored_mutates = q.mutates;
-		//ljy--在这里进行收集
-		HomoSeqSetManager.collectHomoSeqSet(q);
 	}
 	
 	public static List<QueueEntry> mutateFaultSequence_backup(QueueEntry q) {

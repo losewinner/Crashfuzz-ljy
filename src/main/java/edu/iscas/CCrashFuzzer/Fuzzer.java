@@ -471,9 +471,6 @@ public class Fuzzer {
 	   for every byte in the bitmap. We win that slot if there is no previous
 	   contender, or if the contender has a more favorable speed x size factor. */
 
-	public void update_bitmap_score(QueueEntry q) {
-
-	}
 	/* The second part of the mechanism discussed above is a routine that
 	   goes over top_rated[] entries, and then sequentially grabs winners for
 	   previously-unseen bytes (temp_v) and marks them as favored, at least
@@ -485,11 +482,6 @@ public class Fuzzer {
 			   m.handicap++;
 		   }
 	   }
-	}
-
-	public int calculate_score(QueueEntry q) {
-		return 0;
-
 	}
 
 
@@ -528,7 +520,6 @@ public class Fuzzer {
 						Thread.currentThread().sleep(1000);
 					}
 					System.out.println(FuzzInfo.generateClientReport());
-					System.out.println(HomoSeqSetManager.generateHomoSetsReport(FuzzInfo.total_bugs, FuzzInfo.testedUniqueCases.size())); //ljy--在这添加HomoSet的总体报告。
 					System.exit(0);
 				} catch (IOException | InterruptedException e) {
 					// TODO Auto-generated catch block
@@ -567,7 +558,6 @@ public class Fuzzer {
 				update_queue(q);
 			}
 
-			HomoSeqSetManager.updateHomoSeqSetEntry(q.mutate);
 
 			if(Conf.MANUAL) {
 				Scanner scan = new Scanner(System.in);
@@ -579,7 +569,6 @@ public class Fuzzer {
 		}
 
 		System.out.println(FuzzInfo.generateClientReport());
-		System.out.println(HomoSeqSetManager.generateHomoSetsReport(FuzzInfo.total_bugs, FuzzInfo.testedUniqueCases.size())); //ljy--在这添加HomoSet的总体报告。
 	}
 	public void recordGlobalInfo() {
 		//record total execution time, total used time, total execution number, total map size, total map entry
@@ -614,45 +603,5 @@ public class Fuzzer {
 		}
 	}
 
-	public void loadGlobalInfo() {
-		//load total execution time, total used time, total execution number, total map size, total map entry
-		coverage.virgin_bits = coverage.load_a_bitmap(FileUtil.root+FileUtil.virgin_map_file);
-
-		try {
-			FileInputStream in = new FileInputStream(FileUtil.root+FileUtil.exec_second_file);
-			byte[] content = new byte[1024];
-			in.read(content);
-			FuzzInfo.exec_us = FileUtil.parseStringTimeToSeconds((new String(content)).trim());
-			in.close();
-
-			in = new FileInputStream(FileUtil.root+FileUtil.total_execution_file);
-			Arrays.fill(content, (byte)0);
-			in.read(content);
-			FuzzInfo.total_execs = Long.parseLong((new String(content)).trim());
-			in.close();
-
-			in = new FileInputStream(FileUtil.root+FileUtil.total_tested_time);
-			Arrays.fill(content, (byte)0);
-			in.read(content);
-			FuzzInfo.last_used_seconds = FileUtil.parseStringTimeToSeconds((new String(content)).trim());
-			in.close();
-
-			in = new FileInputStream(FileUtil.root+FileUtil.traced_size_file);
-			Arrays.fill(content, (byte)0);
-			in.read(content);
-			FuzzInfo.total_bitmap_size = Long.parseLong((new String(content)).trim());
-			in.close();
-
-			in = new FileInputStream(FileUtil.root+FileUtil.total_map_entry_file);
-			Arrays.fill(content, (byte)0);
-			in.read(content);
-			FuzzInfo.total_bitmap_entries = Long.parseLong((new String(content)).trim());
-			in.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-
-	}
 
 }
