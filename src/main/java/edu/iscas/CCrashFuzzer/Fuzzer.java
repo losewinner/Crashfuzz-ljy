@@ -494,6 +494,7 @@ public class Fuzzer {
 
 
 	public void start() throws IOException {
+		//ljy--master主分支操作
 		int seek_to;
 		//fuzz loop:
 		//perform dry run
