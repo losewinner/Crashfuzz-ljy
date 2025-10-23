@@ -13,9 +13,12 @@ import java.util.List;
 import edu.iscas.CCrashFuzzer.utils.FileUtil;
 
 public class CoverageCollector {
+	//ljy--记录尚未在崩溃中出现的代码块
 	public static byte[] virgin_bits;    /* Bits we haven't seen in crashes  */
 	static byte[] virgin_tmout;
 	static byte[] virgin_crash;
+
+	//ljy--字节数组trace_bits存储当前执行路径覆盖的代码块信息
 	public static byte[] trace_bits;//store covered bits in a run
 	
     public int actualSize(){
@@ -46,6 +49,9 @@ public class CoverageCollector {
 	   it needs to be fast. We do this in 32-bit and 64-bit flavors. */
 
 	//my return the new covered bits.
+
+	//ljy--has_new_bits()方法检查当前执行是否带来新的代码覆盖
+	//ljy--最外层的函数，被Fuzzer.java调用
 	public int has_new_bits() {
 		int finds= 0;
 		int curCovCounts = 0;
@@ -69,6 +75,7 @@ public class CoverageCollector {
 		}
 
 		if(finds > 0) {
+			//ljy--将当前代码未覆盖情况写入到文件中进行持久化，为了下一轮测试再拿出来对比
 			write_bitmap(virgin_bits, FileUtil.root+FileUtil.virgin_map_file);
 			int key = (int) (FuzzInfo.getUsedSeconds()/(FuzzInfo.reportWindow*60));
 			FuzzInfo.timeToTotalCovs.put(key, curCovCounts);
@@ -78,7 +85,8 @@ public class CoverageCollector {
 		Stat.log("Covered "+finds+" new code blocks!!!!!!!!!!!!!!!!!!!");
 		return finds;
 	}
-	
+
+	//计算已覆盖的代码块数量
 	public static int coveredBlocks(byte[] bytes) {
 		int rst = 0;
 		for(int i = 0; i< bytes.length; i++) {
@@ -144,11 +152,13 @@ public class CoverageCollector {
 	
 	/* Read bitmap from file. This is for the -B option again. */
 
+	//ljy--这里统计的是本次测试一共覆盖了多少代码基本块（并非相比目前最大覆盖率的新覆盖）
 	public void read_bitmap(String fname) {
 		Arrays.fill(trace_bits, (byte)0);
 		//load trace bits
 		List<File> traces = new ArrayList<File>();
 		loadTrace(traces, fname, "fuzzcov");
+		//ljy--读取的是tmp文件加下的cov文件夹的各个服务器下的fuzzcov文件
 		System.out.println("Got "+traces.size()+" coverage files.");
 		int edges = 0;
 		for(File f:traces) {
@@ -171,6 +181,8 @@ public class CoverageCollector {
 				edges++;
 			}
 		}
+
+		//ljy--edges统计的是被覆盖的代码块的数量
 		System.out.println("Got "+edges+" edges for this trace.");		
 		Stat.log("read_bitmap-Got "+edges+" covered blocks!");
 	}

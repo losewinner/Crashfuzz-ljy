@@ -55,7 +55,6 @@ public class Cluster {
 		if(favconfig.CHECKER != null) {
             String path = favconfig.CHECKER.getAbsolutePath();
             String workingDir = path.substring(0, path.lastIndexOf("/"));
-            
             Set<String> aliveNodes = new HashSet<String>();
             Set<String> deadNodes = new HashSet<String>();
             for(MaxDownNodes subC:currentCluster) {

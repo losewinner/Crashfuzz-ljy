@@ -179,6 +179,18 @@ public class Controller {
 				int ioID = inStream.readInt();
 				String reportNodeIp = inStream.readUTF();
 				String cliID = inStream.readUTF()+" for ioID "+ioID+", ";
+				String currentServerRole = null;
+
+				//ljy--插入对节点角色的接收
+				int hasServerRole = inStream.readInt();
+				if(hasServerRole == 0){
+					Stat.log("插桩程序未能获取节点角色");
+				}
+				else{
+					currentServerRole = inStream.readUTF();
+					Stat.log("插桩程序获取节点角色："+ currentServerRole);
+				}
+
 				//System.out.println("ClientHandler-" +id+ ": msg is :"+mess);
 
 				//ljy--这里开始就是线程对faultSequence的互斥访问了，
