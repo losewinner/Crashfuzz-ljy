@@ -20,6 +20,7 @@ public class IOPoint {
     public int newCovs = 0;
     public FaultPos pos;//before or after
 	public String serverRole;
+	public boolean roleChange;
 	public String toString() {
 		return "IOID=["+ioID+"]"+", IOIP=["+ip+"], AppearIdx=["+appearIdx+"]"+", CallStack="+CALLSTACK
 				+", Path="+PATH;

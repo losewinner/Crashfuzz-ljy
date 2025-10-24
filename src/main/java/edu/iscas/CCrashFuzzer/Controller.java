@@ -1,21 +1,15 @@
 package edu.iscas.CCrashFuzzer;
 
-import java.io.BufferedWriter;
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.EOFException;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.PrintWriter;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.Buffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
 import edu.iscas.CCrashFuzzer.AflCli.AflCommand;
 import edu.iscas.CCrashFuzzer.AflCli.AflException;
@@ -40,7 +34,13 @@ public class Controller {
     List<MaxDownNodes> currentCluster = new ArrayList<MaxDownNodes>();
     public final int maxClients = 300;
 
-    public Controller(Cluster cluster, int port, Conf favconfig) {
+	//ljy--新增：用于线程A和客户端自线程的通信锁对象
+	private final Object leaderCrashLock = new Object();
+	private Thread leaderMonitorThread;
+	private List<String> zkNodes = new ArrayList<>();
+
+
+	public Controller(Cluster cluster, int port, Conf favconfig) {
     	this.cluster = cluster;
     	this.running = false;
     	this.CONTROLLER_PORT = port;
@@ -53,6 +53,14 @@ public class Controller {
     }
 
     public void startController() {
+		for(int i = 2;i<7;i++){
+			String node = "172.30.0."+i+":11181";
+			zkNodes.add(node);
+		}
+
+		//ljy--在测试开始前更新节点角色。
+		ServerRoleChecker.updateServerRoles();
+
 		running = true;
 		serverThread = new Thread() {
 
@@ -82,6 +90,10 @@ public class Controller {
 			}
 		};
 		serverThread.start();
+
+		//ljy--设置新的线程。
+		initLeaderMonitorThread();
+
 	}
 
 	public void stopController() {
@@ -109,6 +121,74 @@ public class Controller {
 			file.delete();
 		}
 		System.out.println("Controller was stopped.");
+	}
+
+	//ljy--供客户端子线程调用，通知leader崩溃
+	private void notifyLeaderCrash(){
+		synchronized (leaderCrashLock){
+			leaderCrashLock.notify();
+			Stat.log("客户端子线程通知：leader已崩溃");
+		}
+	}
+
+	//ljy--初始化查询leader的子线程
+	private void initLeaderMonitorThread(){
+		leaderMonitorThread = new Thread(()->{
+			while(true){
+				synchronized (leaderCrashLock){
+					try{
+						leaderCrashLock.wait();
+						Stat.log("子线程唤醒，开始查询新leader……");
+
+						String newLeader = null;
+						while(newLeader == null){
+							newLeader = findLeader();
+							if(newLeader == null){
+								TimeUnit.MILLISECONDS.sleep(50);
+							}
+						}
+						Stat.log("找到leader"+newLeader);
+						//更新节点信息
+						//TODO：这里怎么知道是在什么时候发生改变的呢？
+						ServerRoleChecker.updateServerRoles();
+
+					} catch (InterruptedException e){
+						Thread.currentThread().interrupt();
+						break;
+					}
+				}
+			}
+		},"LeaderMonitorThread");
+		leaderMonitorThread.setDaemon(true);
+		leaderMonitorThread.start();
+	}
+
+	//ljy--四字命令查询当前集群leader
+	private String findLeader(){
+		for(String node: zkNodes){
+			String[] hostPort = node.split(":");
+			String host = hostPort[0];
+			int port = Integer.parseInt(hostPort[1]);
+			try(Socket socket = new Socket(host, port);
+				BufferedReader reader = new BufferedReader(
+						new InputStreamReader(socket.getInputStream())
+				)){
+				// 发送四字命令 "stat"
+				socket.getOutputStream().write("stat\n".getBytes());
+				socket.getOutputStream().flush();
+
+				// 解析响应，查找leader信息（stat命令返回中包含"Leader:"字段）
+				String line;
+				while ((line = reader.readLine()) != null) {
+					if (line.startsWith("Leader:")) {
+						return line.split(": ")[1].trim(); // 提取leader的ip:port
+					}
+				}
+			} catch (IOException e){
+				Stat.log("查询节点失败");
+			}
+		}
+		return null;
 	}
 
 	public void prepareFaultSeq(FaultSequence p) {
@@ -181,15 +261,9 @@ public class Controller {
 				String cliID = inStream.readUTF()+" for ioID "+ioID+", ";
 				String currentServerRole = null;
 
-				//ljy--插入对节点角色的接收
-				int hasServerRole = inStream.readInt();
-				if(hasServerRole == 0){
-					Stat.log("插桩程序未能获取节点角色");
-				}
-				else{
-					currentServerRole = inStream.readUTF();
-					Stat.log("插桩程序获取节点角色："+ currentServerRole);
-				}
+				//ljy--插入对节点角色的查询
+
+
 
 				//System.out.println("ClientHandler-" +id+ ": msg is :"+mess);
 
@@ -229,6 +303,7 @@ public class Controller {
 								if(p.ioPt.ioID == ioID && p.curAppear < p.ioPt.appearIdx) {
 									//meet the a fault point, check appear indexes
 									p.curAppear++;
+
 //									Stat.log(cliID+"---------"+i+"th--"+ioID+"'s curAppear++:"+p.curAppear+"----------");
 									if(p.curAppear == p.ioPt.appearIdx) {
 										//can inject a fault
@@ -236,6 +311,14 @@ public class Controller {
 										pendingFault = i;
 										injectFault = true; //这个布尔值应该是说：已经把FaultPoint插到对应的IOPoint执行的位置了。
 										pendingPoint = p;
+
+										//ljy--这里只是对对应的IOPoint的节点角色变更标识进行设ture
+										//ljy--真正改变节点角色的操作在下面，这里只是定个锚点。
+										//ljy--但这有个问题，因为这里还不知道真正被crash的实际节点是不是leader
+										//ljy--后面更新的时候还需要判断。
+										p.ioPt.roleChange = true;
+
+
 									}
 								}
 							}
@@ -334,12 +417,26 @@ public class Controller {
 						//ljy--这里是杀死节点的操作，在ClientHandler的socket关闭后。
 		        		rst.add(Stat.log("Prepare to crash node "+pendingPoint.actualNodeIp));
 		                List<String> crashRst = cluster.killNode(pendingPoint.actualNodeIp, pendingPoint.actualNodeIp);
-		                rst.addAll(crashRst);
+
+						//ljy--添加对leader崩溃后，重新查找新leader的代码
+						String targetNode = pendingPoint.actualNodeIp;
+						String role = ServerRoleChecker.currentServerRoles.get(targetNode);
+
+						if(role!=null && role.equals("leader")){
+							//ljy--这里更新是因为，leader被崩溃后，整个集群会存在looking过程。
+							ServerRoleChecker.updateServerRoles();
+							//ljy--更新IOPoint的roleChange标识在上面。
+							notifyLeaderCrash();
+						}
+
+
+						rst.addAll(crashRst);
 		                //CrashTriggerMain.generateFailureInfo(restartRst, point, acceptedCrashNode, CUR_CRASH_NODE_NAME, restarted, "restart-failure");
 		                rst.add(Stat.log("node "+pendingPoint.actualNodeIp+" was killed!"));
 
 						//ljy--在杀死节点后，需要更新一下当前测试状态中，整个集群中节点的存活情况
 		                Mutation.buildClusterStatus(currentCluster, pendingPoint.actualNodeIp, FaultStat.CRASH);
+
 
 					//ljy--如果当前等待执行的故障点是Reboot
 					} else if(pendingPoint.stat.equals(FaultStat.REBOOT)) {
