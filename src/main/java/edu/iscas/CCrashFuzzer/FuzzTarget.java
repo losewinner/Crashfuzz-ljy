@@ -88,6 +88,7 @@ public class FuzzTarget extends AbstractFuzzTarget{
 		};
 		long start = System.currentTimeMillis();
 		runWorkload.start();
+
 		
 		int waitIdx = 0;
 		boolean addedController = false;
@@ -228,6 +229,9 @@ public class FuzzTarget extends AbstractFuzzTarget{
 		}
 		
 		controller.stopController();
+		//ljy---在当前测试结束的时候，更新节点角色信息
+
+
 		return ret;
 	}
 

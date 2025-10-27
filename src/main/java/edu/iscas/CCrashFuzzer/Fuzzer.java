@@ -459,6 +459,9 @@ public class Fuzzer {
 			q.next = queue_cur;
 			queue_cur = q;
 		}
+		ServerRoleChecker.updateQueueEntryRole(q);
+		ServerRoleManager.deleteFolder();
+
 		candidate_queue.add(q);
 	}
 

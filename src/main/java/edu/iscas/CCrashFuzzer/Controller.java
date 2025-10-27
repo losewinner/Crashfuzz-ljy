@@ -1,14 +1,12 @@
 package edu.iscas.CCrashFuzzer;
 
 import java.io.*;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.Buffer;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import edu.iscas.CCrashFuzzer.AflCli.AflCommand;
@@ -37,7 +35,7 @@ public class Controller {
 	//ljy--新增：用于线程A和客户端自线程的通信锁对象
 	private final Object leaderCrashLock = new Object();
 	private Thread leaderMonitorThread;
-	private List<String> zkNodes = new ArrayList<>();
+	public List<String> zkNodes = new ArrayList<>();
 
 
 	public Controller(Cluster cluster, int port, Conf favconfig) {
@@ -53,13 +51,7 @@ public class Controller {
     }
 
     public void startController() {
-		for(int i = 2;i<7;i++){
-			String node = "172.30.0."+i+":11181";
-			zkNodes.add(node);
-		}
-
-		//ljy--在测试开始前更新节点角色。
-		ServerRoleChecker.updateServerRoles();
+		ServerRoleManager.setOutputDir();
 
 		running = true;
 		serverThread = new Thread() {
@@ -92,6 +84,7 @@ public class Controller {
 		serverThread.start();
 
 		//ljy--设置新的线程。
+		findInitLeaderThread();
 		initLeaderMonitorThread();
 
 	}
@@ -141,16 +134,22 @@ public class Controller {
 						Stat.log("子线程唤醒，开始查询新leader……");
 
 						String newLeader = null;
+						long stableTimestamp = 0; //ljy--记录集群稳定的时间戳
 						while(newLeader == null){
 							newLeader = findLeader();
 							if(newLeader == null){
-								TimeUnit.MILLISECONDS.sleep(50);
+								Thread.sleep(100);
+							}
+							else{
+								stableTimestamp = System.currentTimeMillis();
 							}
 						}
 						Stat.log("找到leader"+newLeader);
 						//更新节点信息
 						//TODO：这里怎么知道是在什么时候发生改变的呢？
-						ServerRoleChecker.updateServerRoles();
+						//TODO：我的意思就是说，这里和IO点扯不上关系，没办法联系起来
+						//do：用时间戳来匹配
+						ServerRoleChecker.updateServerRoles(stableTimestamp);
 
 					} catch (InterruptedException e){
 						Thread.currentThread().interrupt();
@@ -163,33 +162,128 @@ public class Controller {
 		leaderMonitorThread.start();
 	}
 
-	//ljy--四字命令查询当前集群leader
-	private String findLeader(){
-		for(String node: zkNodes){
-			String[] hostPort = node.split(":");
-			String host = hostPort[0];
-			int port = Integer.parseInt(hostPort[1]);
-			try(Socket socket = new Socket(host, port);
-				BufferedReader reader = new BufferedReader(
-						new InputStreamReader(socket.getInputStream())
-				)){
-				// 发送四字命令 "stat"
-				socket.getOutputStream().write("stat\n".getBytes());
-				socket.getOutputStream().flush();
+	// 修改后的findLeader方法，参考ServerRoleManager的getIpToRoleMap逻辑
+	private String findLeader() {
+		// 1. 调用getIpToRoleMap获取所有节点的角色映射
+		ConcurrentHashMap<String, String> roleMap = getIpToRoleMap();
 
-				// 解析响应，查找leader信息（stat命令返回中包含"Leader:"字段）
-				String line;
-				while ((line = reader.readLine()) != null) {
-					if (line.startsWith("Leader:")) {
-						return line.split(": ")[1].trim(); // 提取leader的ip:port
-					}
-				}
-			} catch (IOException e){
-				Stat.log("查询节点失败");
+		// 2. 从映射中筛选出leader节点
+		for (Map.Entry<String, String> entry : roleMap.entrySet()) {
+			if ("leader".equals(entry.getValue())) {
+				return entry.getKey(); // 返回leader的IP
 			}
 		}
-		return null;
+		return null; // 未找到leader
 	}
+
+	// 新增：获取所有节点的IP与角色映射（完全参考ServerRoleManager的实现）
+	private ConcurrentHashMap<String, String> getIpToRoleMap() {
+		// 解析节点列表（格式：ip:port）
+		ConcurrentHashMap<String, Integer> ipToPort = parseNodeList();
+		ConcurrentHashMap<String, String> ipToRole = new ConcurrentHashMap<>();
+
+		// 遍历所有节点查询角色
+		for (Map.Entry<String, Integer> entry : ipToPort.entrySet()) {
+			String ip = entry.getKey();
+			int port = entry.getValue();
+			try {
+				String role = getNodeRole(ip, port); // 调用获取单个节点角色的方法
+				ipToRole.put(ip, role);
+			} catch (IOException e) {
+				//Stat.log("查询节点" + ip + ":" + port + "角色失败：" + e.getMessage());
+				ipToRole.put(ip, "follower"); // 标记为未知状态
+			}
+		}
+		return ipToRole;
+	}
+
+	// 解析节点列表（将zkNodes转换为IP->端口的映射，参考ServerRoleManager的parseNodeList）
+	private ConcurrentHashMap<String, Integer> parseNodeList() {
+		ConcurrentHashMap<String, Integer> ipToPort = new ConcurrentHashMap<>();
+		for (String node : zkNodes) {
+			String[] parts = node.split(":");
+			if (parts.length == 2) {
+				String ip = parts[0].trim();
+				int port = Integer.parseInt(parts[1].trim());
+				ipToPort.put(ip, port);
+			} else {
+				Stat.log("无效的节点格式：" + node);
+			}
+		}
+		return ipToPort;
+	}
+
+	// 获取单个节点的角色（参考ServerRoleManager的fourLetterWord逻辑）
+	private String getNodeRole(String host, int port) throws IOException {
+		String cmd = "srvr"; // 使用与ServerRoleManager一致的"srvr"命令
+		int timeout = 5000; // 超时时间与ServerRoleManager保持一致
+
+		try (Socket sock = new Socket()) {
+			// 建立连接
+			InetSocketAddress address = new InetSocketAddress(host, port);
+			sock.connect(address, timeout);
+			sock.setSoTimeout(timeout);
+
+			// 发送命令
+			OutputStream outstream = sock.getOutputStream();
+			outstream.write(cmd.getBytes());
+			outstream.flush();
+			sock.shutdownOutput();
+
+			// 读取响应并解析Mode字段
+			try (BufferedReader reader = new BufferedReader(
+					new InputStreamReader(sock.getInputStream()))) {
+				String line;
+				while ((line = reader.readLine()) != null) {
+					if (line.contains("Mode: ")) {
+						return line.replaceAll("Mode: ", "").trim(); // 提取角色（leader/follower/looking）
+					}
+				}
+			}
+		}
+		return "unknown"; // 未找到Mode字段
+	}
+
+	//初始一次性寻找leader线程
+	private void findInitLeaderThread(){
+		Thread updateServerRole = new Thread(){
+			@Override
+			public void run(){
+
+				for(int i = 2;i<7;i++){
+					String node = "172.30.0."+i+":11181";
+					zkNodes.add(node);
+				}
+				//ljy--在测试开始前更新节点角色。
+				try{
+					Stat.log("初始线程唤醒，开始查询初始的leader……");
+					String newLeader = null;
+					long stableTimestamp = 0; //ljy--记录集群稳定的时间戳
+					while(newLeader == null){
+						newLeader = findLeader();
+
+						if(newLeader == null){
+							Thread.sleep(50);
+						}
+						else{
+							stableTimestamp = System.currentTimeMillis();
+						}
+					}
+					Stat.log("找到leader"+newLeader);
+					//更新节点信息
+					//do：用时间戳来匹配
+					ServerRoleChecker.updateServerRoles(stableTimestamp);
+
+				} catch (InterruptedException e){
+					Stat.log("中断！！");
+					Thread.currentThread().interrupt();
+				}
+			}
+		};
+
+		updateServerRole.start();
+	}
+
 
 	public void prepareFaultSeq(FaultSequence p) {
 		if(p == null || p.isEmpty()) {
@@ -317,6 +411,7 @@ public class Controller {
 										//ljy--但这有个问题，因为这里还不知道真正被crash的实际节点是不是leader
 										//ljy--后面更新的时候还需要判断。
 										p.ioPt.roleChange = true;
+										//说实话这里没什么用了。
 
 
 									}
@@ -424,7 +519,8 @@ public class Controller {
 
 						if(role!=null && role.equals("leader")){
 							//ljy--这里更新是因为，leader被崩溃后，整个集群会存在looking过程。
-							ServerRoleChecker.updateServerRoles();
+							long currentStableTimestamp = System.currentTimeMillis();
+							ServerRoleChecker.updateServerRoles(currentStableTimestamp);
 							//ljy--更新IOPoint的roleChange标识在上面。
 							notifyLeaderCrash();
 						}
@@ -462,6 +558,11 @@ public class Controller {
 						inStream.close();
 						outStream.close();
 						socket.close();
+
+						//ljy--节点复活也需要重新更新集群角色状态
+						long currentStableTimestamp = System.currentTimeMillis();
+						ServerRoleChecker.updateServerRoles(currentStableTimestamp);
+
 //						Stat.log(cliID+"---------For fault "+cur_Fault+", informed reporting node: REBOOT:"+faultSequence.seq.get(cur_Fault).curAppear+"----------");
 
 						//ljy--在重启节点后，需要更新一下当前测试状态中，整个集群中节点的存活情况

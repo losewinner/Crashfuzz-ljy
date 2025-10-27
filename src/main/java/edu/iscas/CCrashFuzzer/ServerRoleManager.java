@@ -1,5 +1,7 @@
 package edu.iscas.CCrashFuzzer;
 
+import org.apache.commons.io.FileUtils;
+
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.net.Socket;
@@ -19,7 +21,7 @@ public class ServerRoleManager {
 
     private final AtomicInteger fileSequence = new AtomicInteger(1);
     // 存储文件的目录（默认当前目录，可通过setter修改）
-    private String outputDir = ".";
+    private static String outputDir = "./ServerRole";
 
     // 匹配文件名格式：ServerRole-数字.txt
     private static final Pattern FILE_PATTERN = Pattern.compile("ServerRole-(\\d+)\\.txt");
@@ -91,7 +93,7 @@ public class ServerRoleManager {
      * @param nodeList 节点列表字符串，格式：ip1:port1,ip2:port2,...
      * @return 本次写入的文件名（如"ServerRole-3.txt"）
      */
-    public String getAndSaveIpToRoleMap(String nodeList) {
+    public String getAndSaveIpToRoleMap(String nodeList, long stableTimestamp) {
         // 1. 获取角色映射
         ConcurrentHashMap<String, String> roleMap = getIpToRoleMap(nodeList);
 
@@ -100,9 +102,81 @@ public class ServerRoleManager {
         String filePath = outputDir + File.separator + fileName;
 
         // 3. 写入文件
-        writeMapToFile(roleMap, filePath);
+        //writeMapToFile(roleMap, filePath);
+
+        writeMapToFileWithTimestamp(roleMap,filePath, stableTimestamp);
 
         return fileName;
+    }
+
+    public static RoleInfo readFromFileWithTimestamp(String filePath) {
+        ConcurrentHashMap<String, String> roleMap = new ConcurrentHashMap<>();
+        long stableTimestamp = -1; // 初始化为无效值
+        File file = new File(filePath);
+
+        if (!file.exists() || !file.isFile()) {
+           // Stat.log("文件不存在或无效：" + filePath);
+            stableTimestamp = -2;
+            return new RoleInfo(stableTimestamp, roleMap);
+        }
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            // 第一行：稳定时间戳（毫秒）
+            String timestampLine = reader.readLine();
+            if (timestampLine != null && timestampLine.startsWith("stable_timestamp=")) {
+                stableTimestamp = Long.parseLong(timestampLine.split("=")[1].trim());
+            } else {
+                System.err.println("文件格式错误，缺少时间戳：" + filePath);
+                return new RoleInfo(stableTimestamp, roleMap);
+            }
+
+            // 第二行：分隔线（忽略）
+            reader.readLine();
+
+            // 后续行：IP -> 角色
+            String line;
+            while ((line = reader.readLine()) != null) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+
+                String[] parts = line.split(" -> ");
+                if (parts.length == 2) {
+                    String ip = parts[0].trim();
+                    String role = parts[1].trim();
+                    roleMap.put(ip, role);
+                } else {
+                    System.err.println("忽略无效行：" + line);
+                }
+            }
+            System.out.println("成功读取角色文件（含时间戳）：" + filePath);
+
+        } catch (IOException e) {
+            System.err.println("读取文件失败：" + e.getMessage());
+        }
+
+        return new RoleInfo(stableTimestamp, roleMap);
+    }
+
+    /**
+     * 将角色映射和时间戳写入文件
+     * @param roleMap 角色映射
+     * @param filePath 目标路径
+     * @param stableTimestamp 稳定时间戳
+     */
+    private void writeMapToFileWithTimestamp(ConcurrentHashMap<String, String> roleMap, String filePath, long stableTimestamp) {
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(filePath))) {
+            // 第一行：稳定时间戳（毫秒）
+            writer.write("stable_timestamp=" + stableTimestamp + "\n");
+            // 第二行：分隔线
+            writer.write("==============================\n");
+            // 后续行：角色信息
+            for (Map.Entry<String, String> entry : roleMap.entrySet()) {
+                writer.write(String.format("%s -> %s%n", entry.getKey(), entry.getValue()));
+            }
+            System.out.println("已写入带时间戳的角色文件：" + filePath);
+        } catch (IOException e) {
+            System.err.println("写入文件失败：" + e.getMessage());
+        }
     }
 
     /**
@@ -129,7 +203,7 @@ public class ServerRoleManager {
     /**
      * 确保输出目录存在，不存在则创建
      */
-    private void ensureDirExists(String dirPath) {
+    private static void ensureDirExists(String dirPath) {
         File dir = new File(dirPath);
         if (!dir.exists()) {
             boolean created = dir.mkdirs();
@@ -137,6 +211,28 @@ public class ServerRoleManager {
                 System.err.println("警告：无法创建输出目录 " + dirPath + "，将使用当前目录");
                 outputDir = ".";
             }
+        }
+    }
+
+    public static boolean deleteFolder(){
+        File folder = new File(outputDir);
+        if (!folder.exists()) {
+            Stat.log("文件夹不存在：" + outputDir);
+            return false;
+        }
+        if (!folder.isDirectory()) {
+            Stat.log("不是文件夹：" + outputDir);
+            return false;
+        }
+        try {
+            // 递归删除文件夹及其内容
+            FileUtils.deleteDirectory(folder);
+            Stat.log("成功删除文件夹：" + outputDir);
+            return true;
+        } catch (IOException e) {
+            Stat.warn("删除文件夹失败：" + e.getMessage());
+            e.printStackTrace();
+            return false;
         }
     }
 
@@ -319,8 +415,7 @@ public class ServerRoleManager {
     }
 
     // Getter和Setter（用于修改输出目录）
-    public void setOutputDir(String outputDir) {
-        this.outputDir = outputDir;
+    public static void setOutputDir() {
         ensureDirExists(outputDir); // 确保新目录存在
     }
 
