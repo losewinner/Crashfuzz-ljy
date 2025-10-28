@@ -516,6 +516,7 @@ public class Controller {
 						//ljy--添加对leader崩溃后，重新查找新leader的代码
 						String targetNode = pendingPoint.actualNodeIp;
 						String role = ServerRoleChecker.currentServerRoles.get(targetNode);
+						Stat.log("当前被崩溃节点是："+targetNode+":"+role);
 
 						if(role!=null && role.equals("leader")){
 							//ljy--这里更新是因为，leader被崩溃后，整个集群会存在looking过程。

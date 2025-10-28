@@ -94,6 +94,8 @@ public class ServerRoleManager {
      * @return 本次写入的文件名（如"ServerRole-3.txt"）
      */
     public String getAndSaveIpToRoleMap(String nodeList, long stableTimestamp) {
+        //ljy--说实话有点问题，查询的太慢了。
+
         // 1. 获取角色映射
         ConcurrentHashMap<String, String> roleMap = getIpToRoleMap(nodeList);
 
@@ -171,6 +173,8 @@ public class ServerRoleManager {
             writer.write("==============================\n");
             // 后续行：角色信息
             for (Map.Entry<String, String> entry : roleMap.entrySet()) {
+                if(entry.getValue() == "unknown"){}
+
                 writer.write(String.format("%s -> %s%n", entry.getKey(), entry.getValue()));
             }
             System.out.println("已写入带时间戳的角色文件：" + filePath);
@@ -253,6 +257,9 @@ public class ServerRoleManager {
             int port = entry.getValue();
             try {
                 String role = getNodeRole(ip, port);
+                if(role == "unknown") {
+                    role = "follower";
+                }
                 ipToRole.put(ip, role); // 存储 IP->角色
             } catch (IOException e) {
                 // 异常时存储错误信息（如"connect failed"）
