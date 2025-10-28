@@ -5,6 +5,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.lang.management.RuntimeMXBean;
+import java.text.ParseException;
 import java.util.Arrays;
 
 import org.apache.commons.io.FileUtils;
@@ -13,7 +14,7 @@ import edu.iscas.CCrashFuzzer.utils.FileUtil;
 
 public class CloudFuzzMain {
 
-	public static void main(String[] args) throws IOException {
+	public static void main(String[] args) throws IOException, ParseException {
 		// TODO Auto-generated method stub
 		if(args.length < 2) {
 			System.out.println("Please specify the controller port and configuration file!");

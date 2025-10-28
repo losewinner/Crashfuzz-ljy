@@ -217,6 +217,9 @@ public class FuzzTarget extends AbstractFuzzTarget{
 		if(ret != -1) {//no need to collect traces and logs for not triggered ones
 			logInfo.add(Stat.log("Collecting run-time information ..."));
 			m.collectRunTimeInfo(runInfoPath);
+			//ljy--TODO：在这里插入对monitor的日志的临时保存。
+			ServerRoleManager.collectTmpMonitorLogs(logInfo,runInfoPath,testID);
+
 			FileUtil.copyFileToDir(conf.CUR_CRASH_FILE.getAbsolutePath(), runInfoPath);
 		}
 		

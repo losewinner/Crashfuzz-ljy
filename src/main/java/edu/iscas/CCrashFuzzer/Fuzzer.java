@@ -6,6 +6,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -88,7 +89,7 @@ public class Fuzzer {
 	/* Perform dry run of all test cases to confirm that the app is working as
 	   expected. This is done only for the initial inputs, and only once. */
 
-	public void perform_first_run() {
+	public void perform_first_run() throws IOException, ParseException {
 		//for the first run
 		Stat.log("***********************Perform inital runs to collect IO traces*****************************");
 	    long start = System.currentTimeMillis();
@@ -232,7 +233,7 @@ public class Fuzzer {
 	/* Write a modified test case, run program, process results. Handle
 	   error conditions, returning 1 if it's time to bail out. This is
 	   a helper function for fuzz_one(). */
-	public int common_fuzz_stuff(QueueEntry q, QueueEntry seedQ) {
+	public int common_fuzz_stuff(QueueEntry q, QueueEntry seedQ) throws IOException, ParseException {
 		//save current test case to file
 		//run_target
 		//save_if_interesting
@@ -308,7 +309,7 @@ public class Fuzzer {
 	 * Crashes and hangs are considered "unique" if the associated execution paths
 	 * involve any state transitions not seen in previously-recorded faults.
 	 */
-	public boolean save_if_interesting(QueueEntry q, int faultMode, String testID, QueueEntry seedQ) {
+	public boolean save_if_interesting(QueueEntry q, int faultMode, String testID, QueueEntry seedQ) throws IOException, ParseException {
 		//check current rst:
 		//save bugs
 		//add instereting test cases to queue
@@ -400,7 +401,7 @@ public class Fuzzer {
 
 	/* Append new test case to the queue. */
 
-	public void add_to_queue(QueueEntry q, String fname) {
+	public void add_to_queue(QueueEntry q, String fname) throws IOException, ParseException {
 		//after test, the retrieved ioSeq could be different from the original q.ioSeq
 		//the actual faultSeq could also be different from the original q.faultSeq
 
@@ -459,6 +460,9 @@ public class Fuzzer {
 			q.next = queue_cur;
 			queue_cur = q;
 		}
+
+		ServerRoleManager.updateIOPointServerRole(q);
+		Stat.log("随机抽取一个IOPoint查看角色:"+q.ioSeq.get(3).ip+" "+q.ioSeq.get(3).serverRole);
 		candidate_queue.add(q);
 	}
 
@@ -493,7 +497,7 @@ public class Fuzzer {
 	}
 
 
-	public void start() throws IOException {
+	public void start() throws IOException, ParseException {
 		//ljy--master主分支操作
 		int seek_to;
 		//fuzz loop:
